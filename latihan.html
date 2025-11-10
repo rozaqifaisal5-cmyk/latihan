@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<title>Dijkstra Wisata Jakarta (HTML+JS+Leaflet)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  body{margin:0;display:flex;height:100vh;font-family:Arial}
+  .panel{width:340px;padding:12px;background:#f7f7f7;border-right:1px solid #ddd;overflow:auto}
+  #map{flex:1}
+  select,button{width:100%;padding:8px;margin-top:8px}
+  pre{background:#fff;padding:8px;border:1px solid #eee;max-height:200px;overflow:auto}
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h3>Dijkstra — Destinasi Wisata Jakarta</h3>
+    <label>Asal</label><select id="start"></select>
+    <label>Tujuan</label><select id="end"></select>
+    <button id="btn">CARI RUTE</button>
+    <div id="info" style="margin-top:10px"></div>
+    <h4>Data (graph)</h4><pre id="dump"></pre>
+  </div>
+  <div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ====== 1. Data contoh ====== */
+const graph = {
+  "Monas": {"Kota Tua":5.2, "Ancol":7.5},
+  "Kota Tua": {"Monas":5.2, "Ancol":6.0},
+  "Ancol": {"Monas":7.5, "Kota Tua":6.0, "Taman Mini":18.0},
+  "Taman Mini": {"Ancol":18.0, "Ragunan":9.0},
+  "Ragunan": {"Taman Mini":9.0}
+};
+const coords = {
+  "Monas":[-6.175392,106.827153],
+  "Kota Tua":[-6.135706,106.813345],
+  "Ancol":[-6.117664,106.830386],
+  "Taman Mini":[-6.302530,106.895091],
+  "Ragunan":[-6.302000,106.820000]
+};
+
+/* Dump graph */
+document.getElementById('dump').textContent = JSON.stringify(graph, null, 2);
+
+/* ====== 2. Dijkstra (JS) ====== */
+function dijkstra(graph, start, end){
+  const dist = {}, prev = {};
+  for(const n in graph){ dist[n]=Infinity; prev[n]=null; }
+  dist[start]=0;
+  // simple min-queue using array (ok for small graphs)
+  const q = [[0,start]];
+  while(q.length){
+    q.sort((a,b)=>a[0]-b[0]);
+    const [d,u]=q.shift();
+    if(u===end) break;
+    if(d>dist[u]) continue;
+    for(const v in graph[u]){
+      const alt = d + graph[u][v];
+      if(alt < dist[v]){ dist[v]=alt; prev[v]=u; q.push([alt,v]); }
+    }
+  }
+  // reconstruct path
+  const path=[];
+  if(dist[end]===Infinity) return {distance:Infinity, path:[]};
+  let cur=end;
+  while(cur){ path.push(cur); cur=prev[cur]; }
+  path.reverse();
+  return {distance: dist[end], path};
+}
+
+/* ====== 3. Leaflet map ====== */
+const map = L.map('map').setView([-6.2,106.83],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+
+const markers = {};
+for(const name in coords){
+  markers[name] = L.marker(coords[name]).addTo(map).bindPopup(name);
+}
+
+/* ====== 4. UI wiring ====== */
+const startSel=document.getElementById('start'), endSel=document.getElementById('end'), info=document.getElementById('info');
+Object.keys(graph).forEach(n=>{
+  startSel.innerHTML += `<option>${n}</option>`;
+  endSel.innerHTML += `<option>${n}</option>`;
+});
+startSel.value='Monas'; endSel.value='Ancol';
+
+let currentLayer=null;
+document.getElementById('btn').addEventListener('click', ()=>{
+  const s=startSel.value, e=endSel.value;
+  if(!s||!e){ alert('pilih asal & tujuan'); return; }
+  if(s===e){ alert('Asal dan tujuan sama'); return; }
+  const res = dijkstra(graph,s,e);
+  if(res.path.length===0){ info.innerHTML='<b>Tidak ada jalur</b>'; if(currentLayer) map.removeLayer(currentLayer); return; }
+  info.innerHTML = `<b>Jarak:</b> ${res.distance} km <br/><b>Path:</b> ${res.path.join(' → ')}`;
+  // draw polyline
+  const latlngs = res.path.map(n=>coords[n]).filter(x=>x);
+  if(currentLayer) map.removeLayer(currentLayer);
+  currentLayer = L.polyline(latlngs,{color:'blue',weight:5}).addTo(map);
+  map.fitBounds(currentLayer.getBounds().pad(0.5));
+});
+</script>
+</body>
+</html>
